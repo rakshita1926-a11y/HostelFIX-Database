@@ -101,7 +101,15 @@ router.get('/', async (req, res) => {
       ) curr_assign ON true
       LEFT JOIN technician t ON curr_assign.technician_id = t.technician_id
       ${whereClause}
-      ORDER BY c.complaint_date DESC
+      ORDER BY 
+        CASE c.priority 
+          WHEN 'Urgent' THEN 1 
+          WHEN 'High'   THEN 2 
+          WHEN 'Medium' THEN 3 
+          WHEN 'Low'    THEN 4 
+          ELSE 5 
+        END ASC,
+        c.complaint_date ASC
     `;
 
     const result = await pool.query(query, values);
@@ -280,9 +288,17 @@ async function handleAssignComplaint(req, res) {
       return res.status(400).json({ error: 'Cannot assign a complaint that is already Resolved' });
     }
 
-    // 2. Verify technician existence
+    if (currentStatus === 'Rejected') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Cannot assign a complaint that is already Rejected' });
+    }
+
+    // 2. Verify technician existence and validate hostel authorization via supervising warden
     const techCheck = await client.query(
-      'SELECT technician_id, name, specialization FROM technician WHERE technician_id = $1',
+      `SELECT t.technician_id, t.name, t.specialization, t.warden_id, w.hostel_id 
+       FROM technician t
+       LEFT JOIN warden w ON t.warden_id = w.warden_id
+       WHERE t.technician_id = $1`,
       [parsedTechnicianId]
     );
 
@@ -291,6 +307,13 @@ async function handleAssignComplaint(req, res) {
       return res.status(400).json({ error: 'Referenced technician_id does not exist' });
     }
     const technician = techCheck.rows[0];
+
+    // Enforce cross-hostel technician restriction:
+    // Assigned technician must belong to the same hostel as the authenticated warden (from verified JWT)
+    if (!technician.hostel_id || technician.hostel_id !== req.user.hostel_id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Access denied: cannot assign a technician from another hostel' });
+    }
 
     // 3. Verify warden existence if warden_id provided
     let changedBy = req.user && req.user.warden_id ? String(req.user.warden_id) : 'Warden';
@@ -377,7 +400,125 @@ async function handleAssignComplaint(req, res) {
 
 router.post('/:id/assign', handleAssignComplaint);
 
+/**
+ * PATCH /api/warden/complaints/:id/reject
+ * Reject a complaint and record reason in status_history in a single transaction.
+ * Requires: non-empty rejection reason (minimum 5 characters).
+ * Prohibits: rejecting already 'Resolved' or 'Rejected' complaints.
+ */
+async function handleRejectComplaint(req, res) {
+  // Role check: only wardens can reject
+  if (req.user && req.user.role !== 'warden') {
+    return res.status(403).json({ error: 'Access denied: only wardens can reject complaints' });
+  }
+
+  const { id } = req.params;
+
+  if (!/^\d+$/.test(id)) {
+    return res.status(400).json({ error: 'Invalid complaint ID. Must be an integer.' });
+  }
+
+  const complaintId = parseInt(id, 10);
+  const rawReason = req.body.reason || req.body.remarks;
+
+  if (!rawReason || typeof rawReason !== 'string' || rawReason.trim().length < 5) {
+    return res.status(400).json({
+      error: 'Rejection reason is required and must be at least 5 characters long',
+    });
+  }
+
+  const sanitizedReason = rawReason.trim();
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // 1. Lock complaint and check existence & hostel ownership
+    const complaintCheck = await client.query(
+      `SELECT c.complaint_id, c.status, l.hostel_id 
+       FROM complaints c 
+       JOIN location l ON c.location_id = l.location_id 
+       WHERE c.complaint_id = $1 
+       FOR UPDATE OF c`,
+      [complaintId]
+    );
+
+    if (complaintCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Complaint not found' });
+    }
+
+    const complaintRow = complaintCheck.rows[0];
+
+    // Enforce cross-hostel protection on rejection
+    if (!req.user || !req.user.hostel_id || complaintRow.hostel_id !== req.user.hostel_id) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: "Access denied to another hostel's complaint" });
+    }
+
+    // Disallow rejecting already terminal or resolved complaints
+    if (complaintRow.status === 'Resolved') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Cannot reject a complaint that is already Resolved' });
+    }
+
+    if (complaintRow.status === 'Rejected') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Complaint is already Rejected' });
+    }
+
+    // 2. Update complaint status to 'Rejected'
+    const updateComplaintQuery = `
+      UPDATE complaints
+      SET status = 'Rejected'
+      WHERE complaint_id = $1
+      RETURNING complaint_id, status
+    `;
+    const updatedComp = await client.query(updateComplaintQuery, [complaintId]);
+
+    // 3. Insert audit log into status_history
+    const changedBy = req.user && req.user.warden_id
+      ? `Warden #${req.user.warden_id}`
+      : (req.user && req.user.name ? `Warden ${req.user.name}` : 'Warden');
+
+    const insertHistoryQuery = `
+      INSERT INTO status_history (complaint_id, status, changed_by, remarks)
+      VALUES ($1, $2, $3, $4)
+      RETURNING history_id, complaint_id, status, changed_date, changed_by, remarks
+    `;
+    const historyResult = await client.query(insertHistoryQuery, [
+      complaintId,
+      'Rejected',
+      changedBy.slice(0, 100),
+      sanitizedReason,
+    ]);
+
+    await client.query('COMMIT');
+
+    return res.status(200).json({
+      message: 'Complaint rejected successfully',
+      complaint_id: complaintId,
+      status: updatedComp.rows[0].status,
+      status_history: historyResult.rows[0],
+    });
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      console.error('Rollback error on reject:', rollbackErr.message);
+    }
+
+    console.error('Error rejecting complaint:', err.message);
+    return res.status(500).json({ error: 'Failed to reject complaint' });
+  } finally {
+    client.release();
+  }
+}
+
+router.patch('/:id/reject', handleRejectComplaint);
+
 module.exports = {
   router,
   handleAssignComplaint,
+  handleRejectComplaint,
 };

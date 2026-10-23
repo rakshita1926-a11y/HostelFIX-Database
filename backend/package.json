@@ -5,11 +5,15 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/complaints.test.js",
+    "test": "node tests/complaints.test.js && node tests/lookups.test.js && node tests/stage3_priority_rejection.test.js && node tests/stage4b_assignment_security.test.js",
+    "test:lookups": "node tests/lookups.test.js",
+    "test:stage3": "node tests/stage3_priority_rejection.test.js",
+    "test:stage4b": "node tests/stage4b_assignment_security.test.js",
     "test:db": "node -e \"const pool = require('./db'); pool.query('SELECT 1').then(() => { console.log('Database connection successful'); process.exit(0); }).catch(err => { console.error('Database connection failed:', err.message); process.exit(1); });\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",

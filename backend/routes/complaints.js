@@ -203,10 +203,16 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'description is required and must be a non-empty string' });
   }
 
-  // Validate priority
-  if (!VALID_PRIORITIES.includes(priority)) {
+  // Validate priority: students cannot self-assign Urgent
+  if (priority === 'Urgent') {
     return res.status(400).json({
-      error: `Invalid priority. Allowed values: ${VALID_PRIORITIES.join(', ')}`,
+      error: "Students cannot self-assign 'Urgent' priority. Urgent priority is reserved for verified safety-critical emergencies upon warden review. Allowed student priorities: Low, Medium, High.",
+    });
+  }
+
+  if (!VALID_PRIORITIES.includes(priority) || !['Low', 'Medium', 'High'].includes(priority)) {
+    return res.status(400).json({
+      error: `Invalid priority. Allowed values for students: Low, Medium, High`,
     });
   }
 
