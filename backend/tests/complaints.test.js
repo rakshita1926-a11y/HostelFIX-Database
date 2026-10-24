@@ -261,8 +261,9 @@ async function runTests() {
       assert(studentAuthRes.status === 200, 'Student login with matching password returns 200');
       assert(!!studentAuthRes.body.token, 'Student login returns signed JWT');
       assert(studentAuthRes.body.user && studentAuthRes.body.user.password_hash === undefined, 'Student response does not expose password_hash');
+      assert(studentAuthRes.body.user && studentAuthRes.body.user.student_id === 'S101', 'Student login returns user object containing student_id S101');
       const decodedStudent = jwt.verify(studentAuthRes.body.token, JWT_SECRET);
-      assert(decodedStudent.role === 'student' && decodedStudent.student_id === 'S101' && decodedStudent.hostel_id === 1, 'Student JWT has matching role, student_id, and hostel_id claims');
+      assert(decodedStudent.role === 'student' && decodedStudent.student_id === 'S101' && decodedStudent.id === 'S101' && decodedStudent.hostel_id === 1, 'Student JWT has matching role, student_id, and hostel_id claims');
 
       // Warden login flow
       const mockWardenDb = {
@@ -445,22 +446,69 @@ async function runTests() {
       assert(body.error === 'Complaint not found', 'GET /api/complaints/999999 returns not found error');
     }
 
-    // 11. POST /api/complaints - validation: missing student_id
+    // 11. POST /api/complaints - identity resolution from JWT and impersonation prevention
     {
-      const res = await fetch(`${baseUrl}/api/complaints`, {
+      // 11.1 Token missing student identifier returns 401
+      const tokenWithoutStudentId = generateToken({
+        role: 'student',
+        hostel_id: 1,
+        name: 'Student Without ID',
+      });
+      const noIdRes = await fetch(`${baseUrl}/api/complaints`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${studentToken}`,
+          Authorization: `Bearer ${tokenWithoutStudentId}`,
         },
         body: JSON.stringify({
           location_id: 1,
           description: 'Broken window',
         }),
       });
-      const body = await res.json();
-      assert(res.status === 400, 'POST /api/complaints without student_id returns 400');
-      assert(body.error && body.error.includes('student_id'), 'Validation error mentions student_id');
+      const noIdBody = await noIdRes.json();
+      assert(noIdRes.status === 401, 'POST /api/complaints with token missing student identifier returns 401');
+      assert(noIdBody.error && noIdBody.error.includes('student identifier'), 'Error indicates missing student identifier in token');
+
+      // 11.2 Submitting complaint without student_id in body successfully derives identity from token (passes to DB validation)
+      const derivedRes = await fetch(`${baseUrl}/api/complaints`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${studentToken}`,
+        },
+        body: JSON.stringify({
+          location_id: 999999, // Non-existent location triggers FK check in DB, proving student_id was derived
+          description: 'Broken window',
+        }),
+      });
+      const derivedBody = await derivedRes.json();
+      assert(derivedRes.status === 400, 'POST /api/complaints without student_id in body derives student_id from token');
+      assert(!derivedBody.error || !derivedBody.error.includes('student_id is required'), 'Body does not fail for missing student_id in body');
+
+      // 11.3 Submitting complaint with mismatched student_id returns 403 (impersonation prevention)
+      const imposterRes = await fetch(`${baseUrl}/api/complaints`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${studentToken}`,
+        },
+        body: JSON.stringify({
+          student_id: 'DIFFERENT_STUDENT_ID',
+          location_id: 1,
+          description: 'Impersonation attempt',
+        }),
+      });
+      const imposterBody = await imposterRes.json();
+      assert(imposterRes.status === 403, 'POST /api/complaints with mismatched student_id in body returns 403');
+      assert(imposterBody.error && imposterBody.error.includes('Forbidden'), 'Rejection mentions Forbidden');
+
+      // 11.4 Querying complaints with cross-student student_id filter returns 403
+      const crossStudentRes = await fetch(`${baseUrl}/api/complaints?student_id=DIFFERENT_STUDENT_ID`, {
+        headers: { Authorization: `Bearer ${studentToken}` },
+      });
+      const crossStudentBody = await crossStudentRes.json();
+      assert(crossStudentRes.status === 403, 'GET /api/complaints with cross-student student_id filter returns 403');
+      assert(crossStudentBody.error && crossStudentBody.error.includes('Forbidden'), 'Cross-student query rejection mentions Forbidden');
     }
 
     // 12. POST /api/complaints - validation: missing location_id

@@ -173,16 +173,19 @@ Content-Type: application/json
 ### 4.3 Submit New Complaint
 - **Endpoint:** `POST /api/complaints`
 - **Role:** `student`
+- **Identity Derivation:** The authenticated student ID is automatically obtained from the verified JWT session (`req.user.student_id`). Supplying `student_id` in the request body is optional; if provided, it must strictly match the authenticated student. Supplying a mismatched student ID returns `403 Forbidden` (prevention of impersonation).
 - **Request Body:**
 ```json
 {
   "location_id": 1,
   "description": "Ceiling fan making clicking sound on regulator speed 3 and above",
   "priority": "Medium",
-  "asset_id": 1
+  "asset_id": 1,
+  "student_id": "RA2111003010123"
 }
 ```
 - **Validation Rules:**
+  - `student_id` (Optional, String): If provided in request body, must match authenticated JWT student ID. Mismatches return `403 Forbidden`.
   - `location_id` (Required, Integer): Must exist and belong to the student's assigned `hostel_id`. Cross-hostel submissions return `403 Forbidden`.
   - `description` (Required, String): Non-empty text.
   - `priority` (Optional, String): Permitted student values are `'Low'`, `'Medium'`, `'High'`. Default is `'Medium'`.
@@ -192,16 +195,30 @@ Content-Type: application/json
 - **Response (201 Created):**
 ```json
 {
-  "message": "Complaint registered successfully",
   "complaint_id": 105,
+  "student_id": "RA2111003010123",
+  "location_id": 1,
+  "description": "Ceiling fan making clicking sound on regulator speed 3 and above",
+  "priority": "Medium",
   "status": "Pending",
-  "priority": "Medium"
+  "asset_id": 1,
+  "status_history": [
+    {
+      "history_id": 201,
+      "complaint_id": 105,
+      "status": "Pending",
+      "changed_date": "2026-10-24T01:15:00.000Z",
+      "changed_by": "RA2111003010123",
+      "remarks": "Complaint registered"
+    }
+  ]
 }
 ```
 
 ### 4.4 View Own Complaints
 - **Endpoint:** `GET /api/complaints`
 - **Role:** `student`
+- **Identity Enforcement:** Automatically scopes results to the authenticated student's complaints (`c.student_id = authStudentId`). If a `student_id` query parameter is provided, it must match the authenticated student; querying another student's complaints returns `403 Forbidden`.
 - **Query Parameters (Optional):**
   - `status`: `'Pending'`, `'Assigned'`, `'In Progress'`, `'Resolved'`, `'Rejected'`
   - `priority`: `'Low'`, `'Medium'`, `'High'`, `'Urgent'`

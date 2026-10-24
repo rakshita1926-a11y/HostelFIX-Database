@@ -18,14 +18,24 @@ router.use(authenticateToken);
  */
 router.get('/', async (req, res) => {
   try {
-    const student_id = req.query.student_id || req.query.registration_number;
     const { status, priority } = req.query;
     const conditions = [];
     const values = [];
 
     // Enforce data boundary based on user role
     if (req.user && req.user.role === 'student') {
-      values.push(req.user.student_id);
+      const authStudentId = req.user.student_id || req.user.id;
+      if (!authStudentId || typeof authStudentId !== 'string' || !authStudentId.trim()) {
+        return res.status(401).json({ error: 'Authentication token missing valid student identifier' });
+      }
+
+      // If client explicitly queries by student_id, reject cross-student queries
+      const requestedStudentId = req.query.student_id || req.query.registration_number;
+      if (requestedStudentId && requestedStudentId.trim() !== authStudentId.trim()) {
+        return res.status(403).json({ error: 'Forbidden: cannot view complaints for another student' });
+      }
+
+      values.push(authStudentId.trim());
       conditions.push(`c.student_id = $${values.length}`);
     } else if (req.user && req.user.role === 'warden') {
       values.push(req.user.hostel_id);
@@ -137,7 +147,8 @@ router.get('/:id', async (req, res) => {
 
     // Enforce data access boundary: students cannot view other students' complaints; wardens cannot view other hostels'
     if (req.user && req.user.role === 'student') {
-      if (complaint.student_id !== req.user.student_id) {
+      const authStudentId = req.user.student_id || req.user.id;
+      if (!authStudentId || complaint.student_id !== authStudentId) {
         return res.status(403).json({ error: 'Access denied: complaint does not belong to you' });
       }
     } else if (req.user && req.user.role === 'warden') {
@@ -167,9 +178,9 @@ router.get('/:id', async (req, res) => {
 /**
  * POST /api/complaints
  * Register a new complaint and create the initial matching status_history record in a single transaction.
- * Enforces role restriction (student only), impersonation prevention, and cross-hostel protection.
+ * Enforces role restriction (student only), JWT identity derivation, impersonation prevention, and cross-hostel protection.
  * Required: location_id, description
- * Optional: priority (defaults to 'Medium'), asset_id (nullable), remarks (nullable)
+ * Optional: priority (defaults to 'Medium'), asset_id (nullable), remarks (nullable), student_id (must match token if provided)
  */
 router.post('/', async (req, res) => {
   // Role verification: only students can lodge complaints
@@ -177,19 +188,21 @@ router.post('/', async (req, res) => {
     return res.status(403).json({ error: 'Access denied: only students can register complaints' });
   }
 
+  // Obtain authenticated student identifier from verified JWT
+  const authStudentId = req.user && (req.user.student_id || req.user.id);
+  if (!authStudentId || typeof authStudentId !== 'string' || !authStudentId.trim()) {
+    return res.status(401).json({ error: 'Authentication token missing valid student identifier' });
+  }
+
+  // Prevent acting as another student if student_id or registration_number is passed in body
   const requestedStudentId = req.body.student_id || req.body.registration_number;
-
-  // Validate student_id in body
-  if (!requestedStudentId || typeof requestedStudentId !== 'string' || !requestedStudentId.trim()) {
-    return res.status(400).json({ error: 'student_id is required and must be a non-empty string' });
+  if (requestedStudentId !== undefined && requestedStudentId !== null) {
+    if (typeof requestedStudentId !== 'string' || requestedStudentId.trim() !== authStudentId.trim()) {
+      return res.status(403).json({ error: 'Forbidden: cannot lodge complaint for another student' });
+    }
   }
 
-  // Prevent acting as another student
-  if (req.user && requestedStudentId.trim() !== req.user.student_id) {
-    return res.status(403).json({ error: 'Forbidden: cannot lodge complaint for another student' });
-  }
-
-  const student_id = requestedStudentId.trim();
+  const student_id = authStudentId.trim();
   const { location_id, description, priority = 'Medium', asset_id = null, remarks = null } = req.body;
 
   // Validate location_id
