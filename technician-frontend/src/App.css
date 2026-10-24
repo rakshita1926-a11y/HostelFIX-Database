@@ -983,3 +983,106 @@ td strong {
     padding: 18px;
   }
 }
+
+/* Technician Login Styles */
+.tech-login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #faf7f3;
+  padding: 20px;
+}
+
+.tech-login-card {
+  width: min(420px, 100%);
+  padding: 34px 28px;
+  background: #ffffff;
+  border: 1px solid #e3d7cf;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(77, 32, 40, 0.08);
+}
+
+.tech-login-card .brand {
+  justify-content: center;
+  padding-bottom: 16px;
+  color: #4d2028;
+}
+
+.tech-login-card h2 {
+  margin: 0 0 6px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #302624;
+}
+
+.tech-login-card p.subtitle {
+  margin: 0 0 20px;
+  text-align: center;
+  font-size: 12px;
+  color: #796c68;
+}
+
+.tech-login-card label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #443734;
+}
+
+.tech-login-card input {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border: 1px solid #dcd0ca;
+  border-radius: 7px;
+  font-size: 13px;
+  outline: none;
+}
+
+.tech-login-card input:focus {
+  border-color: #4d2028;
+}
+
+.tech-login-submit {
+  width: 100%;
+  padding: 11px;
+  background: #4d2028;
+  color: #fdf6f1;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.tech-login-submit:hover {
+  background: #39161c;
+}
+
+.tech-login-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tech-alert-error {
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: #ffebee;
+  color: #c62828;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.tech-alert-success {
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 6px;
+  font-size: 12px;
+}
+

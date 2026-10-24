@@ -1352,3 +1352,113 @@ button {
     flex-wrap: wrap;
   }
 }
+
+/* Warden Login Styles */
+.warden-login-wrapper {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fffaf5;
+  padding: 20px;
+}
+
+.warden-login-card {
+  width: min(400px, 100%);
+  padding: 30px 28px;
+  background: #ffffff;
+  border: 1px solid #e0d0c8;
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgba(151, 0, 36, 0.08);
+}
+
+.warden-login-card .brand {
+  justify-content: center;
+  margin-bottom: 12px;
+  font-size: 16px;
+  color: #970024;
+}
+
+.warden-login-card .brand-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+.warden-login-card h2 {
+  margin: 0 0 6px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: #292323;
+}
+
+.warden-login-card p.subtitle {
+  margin: 0 0 20px;
+  text-align: center;
+  font-size: 12px;
+  color: #796c68;
+}
+
+.warden-login-card label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #403434;
+}
+
+.warden-login-card input {
+  width: 100%;
+  padding: 10px 12px;
+  margin-bottom: 15px;
+  border: 1px solid #dcd0ca;
+  border-radius: 7px;
+  font-size: 13px;
+  outline: none;
+}
+
+.warden-login-card input:focus {
+  border-color: #970024;
+}
+
+.warden-login-submit {
+  width: 100%;
+  padding: 11px;
+  background: #970024;
+  color: white;
+  border: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+}
+
+.warden-login-submit:hover {
+  background: #7a001d;
+}
+
+.warden-login-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.warden-alert-error {
+  padding: 10px 12px;
+  margin-bottom: 15px;
+  background: #ffebee;
+  color: #c62828;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.warden-alert-success {
+  padding: 10px 12px;
+  margin-bottom: 15px;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
